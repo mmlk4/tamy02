@@ -1,0 +1,6 @@
+# Google & Search Engine Crawlers Configuration for Tamy Digital Signage
+User-agent: *
+Allow: /
+
+# Direct sitemap declaration for Google Search Console & Bing Webmaster
+Sitemap: https://ais-pre-vhpewa5he2z7iuxa4h6mio-47284668287.europe-west3.run.app/sitemap.xml

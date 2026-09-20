@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Send, Phone, Mail, Globe, CheckCircle2, MessageSquare } from 'lucide-react';
+import { StorageService } from '../../services/storage';
 
 interface ContactModalProps {
   isOpen: boolean;
@@ -23,10 +24,23 @@ export const ContactModal: React.FC<ContactModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    try {
+      StorageService.saveInquiry({
+        id: 'inq-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        name: name.trim(),
+        company: company.trim() || 'منشأة تجارية',
+        phone: phone.trim(),
+        screensCount,
+        selectedPlan: selectedPlan || 'طلب استشارة وتواصل عام',
+        notes: notes.trim(),
+        type: selectedPlan ? 'subscription' : 'contact',
+        status: 'new',
+        createdAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('Failed to save inquiry', err);
+    }
     setSubmitted(true);
-    setTimeout(() => {
-      // Allow user to see confirmation
-    }, 500);
   };
 
   const handleWhatsAppDirect = () => {
@@ -39,16 +53,17 @@ export const ContactModal: React.FC<ContactModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs font-sans" dir="rtl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs font-sans" dir="rtl">
       <div 
-        className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 overflow-hidden relative animate-in fade-in zoom-in duration-200"
+        className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 max-h-[92vh] sm:max-h-[88vh] flex flex-col overflow-hidden relative animate-in fade-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header with Tamy Purple accent */}
-        <div className="bg-gradient-to-r from-purple-700 to-indigo-700 p-6 text-white relative">
+        <div className="bg-gradient-to-r from-purple-700 to-indigo-700 p-5 sm:p-6 text-white relative shrink-0">
           <button
             onClick={onClose}
-            className="absolute top-5 left-5 w-8 h-8 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center transition-colors text-white cursor-pointer"
+            className="absolute top-4 left-4 sm:top-5 sm:left-5 w-8 h-8 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center transition-colors text-white cursor-pointer"
+            title="إغلاق"
           >
             <X className="w-5 h-5" />
           </button>
@@ -56,7 +71,7 @@ export const ContactModal: React.FC<ContactModalProps> = ({
           <div className="text-xs font-bold text-purple-200 tracking-wider mb-1">
             TAMY ADVERTISING SCREEN SYSTEMS
           </div>
-          <h3 className="text-xl font-black text-white">
+          <h3 className="text-lg sm:text-xl font-black text-white">
             {selectedPlan ? `طلب الاشتراك في ${selectedPlan}` : 'طلب باقة أو استشارة مجانية'}
           </h3>
           <p className="text-xs text-purple-100 mt-1">
@@ -64,7 +79,7 @@ export const ContactModal: React.FC<ContactModalProps> = ({
           </p>
         </div>
 
-        <div className="p-6">
+        <div className="p-5 sm:p-6 flex-1 min-h-0 overflow-y-auto">
           {submitted ? (
             <div className="text-center py-8 space-y-4">
               <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto border border-emerald-200 shadow-xs">

@@ -11,6 +11,9 @@ export interface ClientAccount {
   status: 'active' | 'suspended';
   createdAt: string;
   notes?: string;
+  subscriptionExpiresAt?: string; // ISO date string e.g. "2026-10-20T23:59:59.999Z"
+  subscriptionDays?: number;      // Number of days (e.g. 30, 90, 365)
+  subscriptionStartedAt?: string; // Subscription start date
 }
 
 export interface ScreenDevice {
@@ -54,8 +57,24 @@ export interface ScheduleItem {
   createdAt: string;
 }
 
+export interface InquiryRequest {
+  id: string;
+  name: string;
+  company?: string;
+  companyName?: string;
+  phone: string;
+  email?: string;
+  screensCount?: string | number;
+  selectedPlan?: string | null;
+  planTitle?: string | null;
+  notes?: string;
+  type: 'subscription' | 'contact';
+  status: 'new' | 'contacted' | 'completed';
+  createdAt: string;
+}
+
 export interface RealtimeSyncMessage {
-  type: 'SCHEDULE_UPDATED' | 'SCREEN_REFRESH' | 'HEARTBEAT';
+  type: 'SCHEDULE_UPDATED' | 'SCREEN_REFRESH' | 'HEARTBEAT' | 'INQUIRIES_UPDATED';
   screenId?: string;
   accountId?: string;
   payload?: any;

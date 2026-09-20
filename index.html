@@ -5,58 +5,205 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script>
       (function() {
+        // Prevent uncaught TypeError when external or preview host scripts assign window.fetch in restricted iframes
+        var suppressFetchError = function(e) {
+          var msg = (e && (e.message || (e.error && e.error.message))) || (typeof e === 'string' ? e : '');
+          if (typeof msg === 'string' && msg.indexOf('fetch') !== -1 && (msg.indexOf('getter') !== -1 || msg.indexOf('property fetch') !== -1)) {
+            if (e && typeof e.preventDefault === 'function') e.preventDefault();
+            if (e && typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+            return true;
+          }
+          return false;
+        };
+        try {
+          window.addEventListener('error', function(e) {
+            if (suppressFetchError(e)) return true;
+          }, true);
+        } catch (_) {}
+        try {
+          var origOnError = window.onerror;
+          window.onerror = function(msg, url, line, col, error) {
+            if (suppressFetchError(msg || error)) return true;
+            if (origOnError) return origOnError.apply(this, arguments);
+          };
+        } catch (_) {}
+
+        // Make window.fetch safely reassignable with a proper getter and setter
         try {
           var origFetch = window.fetch;
-          if (typeof origFetch === 'function') {
-            var currentFetch = origFetch;
-            // 1. Try defining an own writable property on window
-            try {
-              Object.defineProperty(window, 'fetch', {
-                value: function() { return currentFetch.apply(this, arguments); },
-                writable: true,
+          var currentFetch = origFetch;
+          var getFetch = function() { return currentFetch; };
+          var setFetch = function(val) { currentFetch = val; };
+
+          try { delete window.fetch; } catch (_) {}
+          try { if (typeof Window !== 'undefined' && Window.prototype) delete Window.prototype.fetch; } catch (_) {}
+          var p = Object.getPrototypeOf(window);
+          while (p) {
+            try { delete p.fetch; } catch (_) {}
+            p = Object.getPrototypeOf(p);
+          }
+
+          try {
+            Object.defineProperty(window, 'fetch', {
+              get: getFetch,
+              set: setFetch,
+              configurable: true,
+              enumerable: true
+            });
+          } catch (_) {}
+
+          try {
+            if (typeof Window !== 'undefined' && Window.prototype) {
+              Object.defineProperty(Window.prototype, 'fetch', {
+                get: getFetch,
+                set: setFetch,
                 configurable: true,
                 enumerable: true
               });
-            } catch (err1) {
-              // 2. If value property fails, define getter/setter on window
-              try {
-                Object.defineProperty(window, 'fetch', {
-                  get: function() { return currentFetch; },
-                  set: function(val) { currentFetch = val; },
-                  configurable: true,
-                  enumerable: true
-                });
-              } catch (err2) {}
             }
+          } catch (_) {}
 
-            // 3. Also walk the prototype chain to ensure any inherited getter has a setter
-            var proto = Object.getPrototypeOf(window);
-            while (proto) {
-              var desc = Object.getOwnPropertyDescriptor(proto, 'fetch');
-              if (desc && desc.configurable) {
-                try {
-                  Object.defineProperty(proto, 'fetch', {
-                    get: function() { return currentFetch; },
-                    set: function(val) { currentFetch = val; },
-                    configurable: true,
-                    enumerable: true
-                  });
-                } catch (err3) {}
-              }
-              proto = Object.getPrototypeOf(proto);
+          try {
+            if (typeof globalThis !== 'undefined' && globalThis !== window) {
+              Object.defineProperty(globalThis, 'fetch', {
+                get: getFetch,
+                set: setFetch,
+                configurable: true,
+                enumerable: true
+              });
             }
-          }
-        } catch (e) {
-          // silent fallback
-        }
+          } catch (_) {}
+        } catch (_) {}
       })();
     </script>
-    <title>Tamy - نظام إدارة شاشات الإعلانات الذكية</title>
-    <meta name="description" content="نظام تامي لإدارة وبث المحتوى على شاشات العرض الإعلانية للمطاعم والمكاتب لحظياً" />
-    <meta property="og:title" content="Tamy - نظام إدارة شاشات الإعلانات الذكية" />
-    <meta property="og:description" content="نظام تامي لإدارة وبث المحتوى على شاشات العرض الإعلانية للمطاعم والمكاتب لحظياً" />
+    <title>Tamy - Advertising Screen Control Systems</title>
+    <meta name="description" content="نظام تامي المركزي لإدارة وجدولة المحتوى على شاشات العرض الإعلانية للمطاعم والمكاتب مع المزامنة السحابية وإدارة الحسابات والشاشات" />
+    <meta name="keywords" content="شاشات إعلانات, إدارة شاشات رقمية, digital signage saudi, شاشات مطاعم, شاشات قائمة طعام, نظام تامي, تامي للشاشات, جدولة إعلانات الشاشات, بث فوري للشاشات, لوحة تحكم شاشات الإعلانات, digital signage software, tamy screens" />
+    <meta name="author" content="Tamy Advertising Systems" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="googlebot" content="index, follow" />
+    <link rel="canonical" href="https://ais-pre-vhpewa5he2z7iuxa4h6mio-47284668287.europe-west3.run.app/" />
+
+    <!-- Mobile and Browser Theming -->
+    <meta name="theme-color" content="#7c3aed" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Tamy" />
+
+    <!-- OpenGraph Social Card Tags -->
     <meta property="og:type" content="website" />
+    <meta property="og:title" content="Tamy - Advertising Screen Control Systems" />
+    <meta property="og:description" content="نظام تامي المركزي لإدارة وجدولة المحتوى على شاشات العرض الإعلانية للمطاعم والمكاتب مع المزامنة السحابية وإدارة الحسابات والشاشات" />
+    <meta property="og:site_name" content="Tamy" />
+    <meta property="og:locale" content="ar_SA" />
+    <meta property="og:url" content="https://ais-pre-vhpewa5he2z7iuxa4h6mio-47284668287.europe-west3.run.app/" />
+    <meta property="og:image" content="https://ais-pre-vhpewa5he2z7iuxa4h6mio-47284668287.europe-west3.run.app/logo.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="شعار نظام تامي لإدارة الشاشات الإعلانية" />
+
+    <!-- Twitter / X Social Card Tags -->
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Tamy - Advertising Screen Control Systems" />
+    <meta name="twitter:description" content="نظام تامي المركزي لإدارة وجدولة المحتوى على شاشات العرض الإعلانية للمطاعم والمكاتب مع المزامنة السحابية وإدارة الحسابات والشاشات" />
+    <meta name="twitter:image" content="https://ais-pre-vhpewa5he2z7iuxa4h6mio-47284668287.europe-west3.run.app/logo.png" />
+
+    <!-- Schema.org Structured Data (JSON-LD) for Google Rich Snippets -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebApplication",
+          "@id": "https://ais-pre-vhpewa5he2z7iuxa4h6mio-47284668287.europe-west3.run.app/#webapp",
+          "name": "Tamy - Advertising Screen Control Systems",
+          "alternateName": "نظام تامي لإدارة شاشات الإعلانات الرقمية",
+          "url": "https://ais-pre-vhpewa5he2z7iuxa4h6mio-47284668287.europe-west3.run.app/",
+          "description": "نظام تامي المركزي لإدارة وجدولة المحتوى على شاشات العرض الإعلانية للمطاعم والمكاتب مع المزامنة السحابية وإدارة الحسابات والشاشات",
+          "applicationCategory": "BusinessApplication",
+          "operatingSystem": "All, Web, Android TV, Smart TV",
+          "offers": {
+            "@type": "Offer",
+            "price": "23",
+            "priceCurrency": "SAR",
+            "priceValidUntil": "2027-12-31",
+            "availability": "https://schema.org/InStock"
+          },
+          "featureList": [
+            "بث وجدولة الإعلانات لحظياً عبر السحابة",
+            "تحديد ثواني العرض المخصصة للصور",
+            "تشغيل مقاطع الفيديو وفق مدة المقطع الطبيعية",
+            "دعم الشاشات العرضية والطولية وتدوير المحتوى تلقائياً",
+            "العمل دون انقطاع حتى عند ضعف الإنترنت (Offline Caching)",
+            "لوحة تحكم إدارية مركزية متعددة الحسابات والفروع"
+          ]
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://ais-pre-vhpewa5he2z7iuxa4h6mio-47284668287.europe-west3.run.app/#organization",
+          "name": "Tamy Systems",
+          "url": "https://ais-pre-vhpewa5he2z7iuxa4h6mio-47284668287.europe-west3.run.app/",
+          "logo": "https://ais-pre-vhpewa5he2z7iuxa4h6mio-47284668287.europe-west3.run.app/logo.png",
+          "contactPoint": {
+            "@type": "ContactPoint",
+            "telephone": "+9665110185858",
+            "contactType": "customer service",
+            "areaServed": "SA",
+            "availableLanguage": ["Arabic", "English"]
+          }
+        },
+        {
+          "@type": "FAQPage",
+          "@id": "https://ais-pre-vhpewa5he2z7iuxa4h6mio-47284668287.europe-west3.run.app/#faq",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "كم تكلفة ترخيص الشاشة في نظام تامي؟",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "تبلغ تكلفة ترخيص الشاشة الواحدة 29 ريال شهرياً، وتصل إلى 23 ريال شهرياً لكل شاشة عند اشتراك الشاشات المتعددة، وتشمل لوحة تحكم سحابية لرفع وجدولة محتواك الإعلاني وإدارته بسهولة."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "هل أحتاج لشراء أجهزة خاصة أو معقدة لتشغيل تامي؟",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "لا، نظام تامي مصمم ليعمل على أي شاشة ذكية متصلة بالإنترنت (Smart TV بنظام Android TV أو شاشات سامسونج أو إل جي)، أو باستخدام أي جهاز TV Box أو TV Stick اقتصادي يتصل بمنفذ HDMI."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "كيف يتم تحديث الإعلانات وقوائم الأسعار في الفروع؟",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "يتم التحديث لحظياً وسحابياً بالكامل عبر لوحة التحكم الخاصة بك في تامي من هاتفك أو حاسوبك، دون الحاجة لزيارة الفروع أو نسخ الملفات على فلاش ميموري (USB)."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "هل يدعم النظام جدولة وجبات الإفطار والغداء وعروض الويكند تلقائياً؟",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "نعم بكل تأكيد! يمكنك تحديد جدول زمني بالساعة والدقيقة وأيام الأسبوع لكل مادة إعلانية، لتبدأ قائمة الإفطار وتتحول تلقائياً لقائمة الغداء أو العشاء حسب توقيتاتك المحددة."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "ماذا يحدث إذا انقطع اتصال الإنترنت مؤقتاً في المحل؟",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "يستمر العرض بالعمل بشكل طبيعي دون توقف بفضل تقنية التخزين المؤقت المحلي الذكي (Local Cache) في مشغل تامي، وعند عودة الاتصال تتم مزامنة الجداول الجديدة تلقائياً."
+              }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="apple-touch-icon" href="/logo.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Alexandria:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">

@@ -44,5 +44,12 @@ service cloud.firestore {
       allow list: if true;
       allow write: if isValidId(mediaId);
     }
+
+    // Inquiries, Contact Requests & Subscription Interests
+    match /inquiries/{inquiryId} {
+      allow get: if isValidId(inquiryId);
+      allow list: if true;
+      allow write: if isValidId(inquiryId);
+    }
   }
 }

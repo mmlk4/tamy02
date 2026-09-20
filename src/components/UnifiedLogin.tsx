@@ -292,8 +292,12 @@ export const UnifiedLogin: React.FC<UnifiedLoginProps> = ({
 
   if (isModal) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-fadeIn">
-        {content}
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 animate-fadeIn" dir="rtl">
+        <div className="w-full max-w-md max-h-[92vh] sm:max-h-[88vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          <div className="flex-1 overflow-y-auto min-h-0">
+            {content}
+          </div>
+        </div>
       </div>
     );
   }

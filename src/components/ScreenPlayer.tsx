@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ScreenDevice, ScheduleItem, MediaItem, DayOfWeek } from '../types';
+import { ScreenDevice, ScheduleItem, MediaItem, DayOfWeek, ClientAccount } from '../types';
 import { StorageService } from '../services/storage';
+import { Lock, Clock, MessageSquare, RefreshCw } from 'lucide-react';
 
 interface ScreenPlayerProps {
   screenCode: string;
@@ -28,6 +29,10 @@ export const ScreenPlayer: React.FC<ScreenPlayerProps> = ({
   const [screen, setScreen] = useState<ScreenDevice | undefined>(() =>
     StorageService.getScreenById(screenCode)
   );
+  const [account, setAccount] = useState<ClientAccount | undefined>(() => {
+    const s = StorageService.getScreenById(screenCode);
+    return s ? StorageService.getAccountById(s.accountId) : undefined;
+  });
 
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -79,6 +84,8 @@ export const ScreenPlayer: React.FC<ScreenPlayerProps> = ({
     setScreen(freshScreen);
 
     if (freshScreen) {
+      const freshAcc = StorageService.getAccountById(freshScreen.accountId);
+      setAccount(freshAcc);
       const allSchedules = StorageService.getSchedules(freshScreen.id);
       setSchedules(allSchedules);
     }
@@ -242,6 +249,81 @@ export const ScreenPlayer: React.FC<ScreenPlayerProps> = ({
               الخروج
             </button>
           )}
+        </div>
+      </div>
+    );
+  }
+
+  // Check if account subscription has expired or suspended
+  const isAccountExpired = account ? StorageService.isAccountExpired(account) : false;
+  if (isAccountExpired) {
+    const formattedExpiry = account?.subscriptionExpiresAt
+      ? new Date(account.subscriptionExpiresAt).toLocaleDateString('ar-SA', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        })
+      : 'غير محدد';
+
+    const whatsappMessage = encodeURIComponent(
+      `السلام عليكم، أود تجديد وتمديد اشتراك الشاشة (${screen.name} - كود: ${screen.code}) التابعة لمنشأة (${account?.companyName || ''}).`
+    );
+
+    return (
+      <div
+        className="fixed inset-0 z-50 w-screen h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-8 select-none font-sans"
+        dir="rtl"
+      >
+        <div className="max-w-md w-full text-center space-y-6 bg-slate-800/95 border border-slate-700 p-8 rounded-3xl shadow-2xl backdrop-blur-md">
+          <div className="w-16 h-16 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-2xl flex items-center justify-center mx-auto">
+            <Lock className="w-8 h-8" />
+          </div>
+
+          <div className="space-y-2">
+            <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">
+              انتهت فترة الاشتراك
+            </span>
+            <h2 className="text-xl sm:text-2xl font-black text-white">
+              تم إيقاف بث هذه الشاشة مؤقتاً
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+              انتهت صلاحية اشتراك منشأة <span className="font-bold text-white">{account?.companyName}</span> بتاريخ <span className="font-bold text-rose-300">{formattedExpiry}</span>.
+            </p>
+          </div>
+
+          <div className="bg-slate-950/60 rounded-xl p-3.5 border border-slate-700/50 text-xs text-slate-400 flex items-center justify-between">
+            <span>كود الشاشة: <span className="font-mono text-purple-400 font-bold">{screen.code}</span></span>
+            <span>الفرع: <span className="text-slate-200">{screen.branch}</span></span>
+          </div>
+
+          <div className="pt-2 flex flex-col gap-2.5">
+            <a
+              href={`https://wa.me/966500000000?text=${whatsappMessage}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-2 shadow-lg"
+            >
+              <MessageSquare className="w-4 h-4" />
+              <span>تواصل مع الإدارة لتجديد الاشتراك فوراً</span>
+            </a>
+
+            <button
+              onClick={refreshSchedules}
+              className="w-full py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>تحقق من التجديد الآن</span>
+            </button>
+
+            {onExitPlayer && (
+              <button
+                onClick={onExitPlayer}
+                className="w-full py-2 text-slate-400 hover:text-slate-200 text-xs transition-colors cursor-pointer"
+              >
+                الخروج من المشغل
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );

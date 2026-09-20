@@ -10,7 +10,10 @@
         "companyName": { "type": "string" },
         "maxScreens": { "type": "number" },
         "createdAt": { "type": "string" },
-        "email": { "type": "string" }
+        "email": { "type": "string" },
+        "subscriptionExpiresAt": { "type": "string" },
+        "subscriptionDays": { "type": "number" },
+        "subscriptionStartedAt": { "type": "string" }
       },
       "required": ["id", "name", "maxScreens"]
     },
@@ -63,6 +66,24 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "title", "type", "url"]
+    },
+    "InquiryRequest": {
+      "title": "InquiryRequest",
+      "description": "Contact requests and subscription interests from prospective or existing clients",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "company": { "type": "string" },
+        "phone": { "type": "string" },
+        "screensCount": { "type": "string" },
+        "selectedPlan": { "type": "string" },
+        "notes": { "type": "string" },
+        "type": { "type": "string", "enum": ["subscription", "contact"] },
+        "status": { "type": "string", "enum": ["new", "contacted", "completed"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "phone", "type", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -81,6 +102,10 @@
     "/media/{mediaId}": {
       "schema": "MediaItem",
       "description": "Stores advertising media files and assets"
+    },
+    "/inquiries/{inquiryId}": {
+      "schema": "InquiryRequest",
+      "description": "Stores customer inquiries, contact requests, and subscription requests"
     }
   }
 }

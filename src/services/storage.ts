@@ -7,7 +7,7 @@ import {
   onSnapshot 
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { ClientAccount, ScreenDevice, MediaItem, ScheduleItem, RealtimeSyncMessage } from '../types';
+import { ClientAccount, ScreenDevice, MediaItem, ScheduleItem, InquiryRequest, RealtimeSyncMessage } from '../types';
 
 // Error Handler Conforming to Firebase Skill specification
 export enum OperationType {
@@ -77,6 +77,7 @@ const STORAGE_KEYS = {
   SCREENS: 'tamy_screens_v3',
   MEDIA: 'tamy_media_v3',
   SCHEDULES: 'tamy_schedules_v3',
+  INQUIRIES: 'tamy_inquiries_v3',
   ADMIN_SESSION: 'tamy_admin_session_v3',
   CLIENT_SESSION: 'tamy_client_session_v3',
   SAVED_SCREEN: 'tamy_saved_screen_code_v3',
@@ -153,11 +154,13 @@ const memoryCache: {
   screens: ScreenDevice[] | null;
   media: MediaItem[] | null;
   schedules: ScheduleItem[] | null;
+  inquiries: InquiryRequest[] | null;
 } = {
   accounts: null,
   screens: null,
   media: null,
   schedules: null,
+  inquiries: null,
 };
 
 // Initial synchronous load from localStorage with full try/catch protection
@@ -180,6 +183,11 @@ if (typeof window !== 'undefined') {
   try {
     const sch = localStorage.getItem(STORAGE_KEYS.SCHEDULES);
     if (sch) memoryCache.schedules = JSON.parse(sch);
+  } catch {}
+
+  try {
+    const inq = localStorage.getItem(STORAGE_KEYS.INQUIRIES);
+    if (inq) memoryCache.inquiries = JSON.parse(inq);
   } catch {}
 
   // Asynchronously rehydrate from IndexedDB in case localStorage was previously full
@@ -348,6 +356,27 @@ export const StorageService = {
         handleFirestoreError(error, OperationType.LIST, 'schedules');
       });
 
+      // 5. Listen to Inquiries (Contact Requests & Subscription Interests)
+      const inquiriesColl = collection(db, 'inquiries');
+      onSnapshot(inquiriesColl, (snapshot) => {
+        const cloudInquiries: InquiryRequest[] = [];
+        snapshot.forEach((docSnap) => {
+          cloudInquiries.push(docSnap.data() as InquiryRequest);
+        });
+
+        if (cloudInquiries.length > 0) {
+          memoryCache.inquiries = cloudInquiries;
+          safeSetItem(STORAGE_KEYS.INQUIRIES, JSON.stringify(cloudInquiries));
+          idbSave(STORAGE_KEYS.INQUIRIES, cloudInquiries);
+          this.broadcast({
+            type: 'INQUIRIES_UPDATED',
+            timestamp: Date.now(),
+          });
+        }
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'inquiries');
+      });
+
     } catch (e) {
       console.error('Failed to initialize Firestore realtime listeners', e);
     }
@@ -355,22 +384,113 @@ export const StorageService = {
 
   // --- ACCOUNTS ---
   getAccounts(): ClientAccount[] {
+    let list: ClientAccount[] = [];
     if (memoryCache.accounts && Array.isArray(memoryCache.accounts)) {
-      return memoryCache.accounts;
+      list = memoryCache.accounts;
+    } else {
+      try {
+        const data = localStorage.getItem(STORAGE_KEYS.ACCOUNTS);
+        if (data) {
+          list = JSON.parse(data);
+          memoryCache.accounts = list;
+        }
+      } catch {}
     }
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.ACCOUNTS);
-      if (data) {
-        const list = JSON.parse(data);
-        memoryCache.accounts = list;
-        return list;
+
+    // Ensure any account missing subscription fields gets standardized defaults
+    let hasMigration = false;
+    const normalized = list.map(acc => {
+      if (!acc.subscriptionExpiresAt) {
+        hasMigration = true;
+        const base = acc.createdAt ? new Date(acc.createdAt).getTime() : Date.now();
+        const days = acc.subscriptionDays || 30;
+        const expires = new Date(base + days * 24 * 60 * 60 * 1000).toISOString();
+        return {
+          ...acc,
+          subscriptionDays: days,
+          subscriptionExpiresAt: expires,
+          subscriptionStartedAt: acc.createdAt || new Date().toISOString(),
+        };
       }
-    } catch {}
-    return [];
+      return acc;
+    });
+
+    if (hasMigration && normalized.length > 0) {
+      memoryCache.accounts = normalized;
+      safeSetItem(STORAGE_KEYS.ACCOUNTS, JSON.stringify(normalized));
+    }
+
+    return normalized;
   },
 
   getAccountById(id: string): ClientAccount | undefined {
     return this.getAccounts().find(a => a.id === id);
+  },
+
+  isAccountExpired(account?: ClientAccount): boolean {
+    if (!account) return true;
+    if (account.status === 'suspended') return true;
+    if (!account.subscriptionExpiresAt) return false;
+    return new Date(account.subscriptionExpiresAt).getTime() < Date.now();
+  },
+
+  getSubscriptionRemainingDays(account?: ClientAccount): number {
+    if (!account || !account.subscriptionExpiresAt) return 0;
+    const expiryTime = new Date(account.subscriptionExpiresAt).getTime();
+    const nowTime = Date.now();
+    return Math.ceil((expiryTime - nowTime) / (1000 * 60 * 60 * 24));
+  },
+
+  extendAccountSubscription(
+    accountId: string,
+    options: { days?: number; targetDate?: string }
+  ): ClientAccount | null {
+    const account = this.getAccountById(accountId);
+    if (!account) return null;
+
+    let newExpiresAt: string;
+    let newDays: number;
+
+    if (options.targetDate) {
+      // Direct specific target date (YYYY-MM-DD)
+      const parts = options.targetDate.split('-');
+      let targetObj: Date;
+      if (parts.length === 3) {
+        targetObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 23, 59, 59, 999);
+      } else {
+        targetObj = new Date(options.targetDate);
+        targetObj.setHours(23, 59, 59, 999);
+      }
+      newExpiresAt = targetObj.toISOString();
+      const diffDays = Math.max(1, Math.ceil((targetObj.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+      newDays = diffDays;
+    } else if (options.days && options.days > 0) {
+      const isExpired = this.isAccountExpired(account);
+      let baseTime: number;
+      if (isExpired || !account.subscriptionExpiresAt) {
+        // Start counting from now if expired
+        baseTime = Date.now();
+      } else {
+        // Extend existing active date
+        baseTime = new Date(account.subscriptionExpiresAt).getTime();
+      }
+      const targetTime = baseTime + options.days * 24 * 60 * 60 * 1000;
+      const targetDate = new Date(targetTime);
+      targetDate.setHours(23, 59, 59, 999);
+      newExpiresAt = targetDate.toISOString();
+      newDays = (account.subscriptionDays || 0) + options.days;
+    } else {
+      return account;
+    }
+
+    const updated: ClientAccount = {
+      ...account,
+      subscriptionExpiresAt: newExpiresAt,
+      subscriptionDays: newDays,
+      status: 'active', // Reactivate account automatically upon extension
+    };
+
+    return this.saveAccount(updated);
   },
 
   saveAccount(account: ClientAccount): ClientAccount {
@@ -673,6 +793,129 @@ export const StorageService = {
     // Cloud Firestore Delete
     deleteDoc(doc(db, 'schedules', scheduleId)).catch((err) => {
       handleFirestoreError(err, OperationType.DELETE, `schedules/${scheduleId}`);
+    });
+
+    return true;
+  },
+
+  // --- INQUIRIES (CONTACT REQUESTS & SUBSCRIPTION INTERESTS) ---
+  getInquiries(): InquiryRequest[] {
+    if (memoryCache.inquiries && Array.isArray(memoryCache.inquiries)) {
+      return memoryCache.inquiries;
+    }
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.INQUIRIES);
+      if (data) {
+        const list = JSON.parse(data);
+        memoryCache.inquiries = list;
+        return list;
+      }
+    } catch {}
+
+    // Seed realistic sample requests so the Admin immediately sees requests
+    const seedInquiries: InquiryRequest[] = [
+      {
+        id: 'inq-001',
+        name: 'عبدالله السبيعي',
+        company: 'سلسلة مطاعم ركن الذواقة',
+        phone: '+966501234567',
+        screensCount: '4-5',
+        selectedPlan: 'باقة المشروعات (شاشات متعددة)',
+        notes: 'نرغب في ربط شاشات 4 فروع لعرض قوائم الطعام الديناميكية والعروض الترويجية في الرياض.',
+        type: 'subscription',
+        status: 'new',
+        createdAt: new Date(Date.now() - 3600000 * 3).toISOString(),
+      },
+      {
+        id: 'inq-002',
+        name: 'م. فهد القحطاني',
+        company: 'مجمع عيادات النخبة الطبية',
+        phone: '+966559876543',
+        screensCount: '2-3',
+        selectedPlan: 'طلب ترخيص شاشة (29 ر.س/شهرياً)',
+        notes: 'شاشات صالة الانتظار والاستقبال لعرض التوعية الطبية ومواعيد العيادات.',
+        type: 'contact',
+        status: 'contacted',
+        createdAt: new Date(Date.now() - 3600000 * 24).toISOString(),
+      },
+      {
+        id: 'inq-003',
+        name: 'سارة المنصور',
+        company: 'صالون وسبا فيوليت',
+        phone: '+966562233445',
+        screensCount: '1',
+        selectedPlan: 'باقة التجربة المجانية',
+        notes: 'نريد تجربة شاشة ستاند رئيسية في مدخل المركز لعرض باقات العناية بالبشرة.',
+        type: 'subscription',
+        status: 'completed',
+        createdAt: new Date(Date.now() - 3600000 * 48).toISOString(),
+      },
+    ];
+    memoryCache.inquiries = seedInquiries;
+    safeSetItem(STORAGE_KEYS.INQUIRIES, JSON.stringify(seedInquiries));
+    idbSave(STORAGE_KEYS.INQUIRIES, seedInquiries);
+    return seedInquiries;
+  },
+
+  saveInquiry(inquiry: InquiryRequest): InquiryRequest {
+    const inquiries = [...this.getInquiries()];
+    const index = inquiries.findIndex(i => i.id === inquiry.id);
+    if (index >= 0) {
+      inquiries[index] = inquiry;
+    } else {
+      inquiries.unshift(inquiry);
+    }
+    memoryCache.inquiries = inquiries;
+    safeSetItem(STORAGE_KEYS.INQUIRIES, JSON.stringify(inquiries));
+    idbSave(STORAGE_KEYS.INQUIRIES, inquiries);
+
+    this.broadcast({
+      type: 'INQUIRIES_UPDATED',
+      timestamp: Date.now(),
+    });
+
+    const docRef = doc(db, 'inquiries', inquiry.id);
+    setDoc(docRef, cleanForFirestore(inquiry)).catch((err) => {
+      handleFirestoreError(err, OperationType.WRITE, `inquiries/${inquiry.id}`);
+    });
+
+    return inquiry;
+  },
+
+  updateInquiryStatus(id: string, status: 'new' | 'contacted' | 'completed'): void {
+    const inquiries = [...this.getInquiries()];
+    const item = inquiries.find(i => i.id === id);
+    if (item) {
+      item.status = status;
+      memoryCache.inquiries = inquiries;
+      safeSetItem(STORAGE_KEYS.INQUIRIES, JSON.stringify(inquiries));
+      idbSave(STORAGE_KEYS.INQUIRIES, inquiries);
+
+      this.broadcast({
+        type: 'INQUIRIES_UPDATED',
+        timestamp: Date.now(),
+      });
+
+      const docRef = doc(db, 'inquiries', id);
+      updateDoc(docRef, { status }).catch((err) => {
+        handleFirestoreError(err, OperationType.UPDATE, `inquiries/${id}`);
+      });
+    }
+  },
+
+  deleteInquiry(id: string): boolean {
+    const inquiries = this.getInquiries().filter(i => i.id !== id);
+    memoryCache.inquiries = inquiries;
+    safeSetItem(STORAGE_KEYS.INQUIRIES, JSON.stringify(inquiries));
+    idbSave(STORAGE_KEYS.INQUIRIES, inquiries);
+
+    this.broadcast({
+      type: 'INQUIRIES_UPDATED',
+      timestamp: Date.now(),
+    });
+
+    deleteDoc(doc(db, 'inquiries', id)).catch((err) => {
+      handleFirestoreError(err, OperationType.DELETE, `inquiries/${id}`);
     });
 
     return true;
