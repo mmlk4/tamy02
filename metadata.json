@@ -1,0 +1,7 @@
+{
+  "name": "Tamy - Advertising Screen Control Systems",
+  "description": "نظام تامي المركزي لإدارة وجدولة المحتوى على شاشات العرض الإعلانية للمطاعم والمكاتب مع المزامنة السحابية وإدارة الحسابات والشاشات",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

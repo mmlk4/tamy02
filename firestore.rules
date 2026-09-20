@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Health check ping
+    match /_connection_test/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Commercial Client Accounts
+    match /accounts/{accountId} {
+      allow read: if isValidId(accountId);
+      allow write: if isValidId(accountId);
+    }
+
+    // Screen Devices (TVs, displays)
+    match /screens/{screenId} {
+      allow read: if isValidId(screenId);
+      allow write: if isValidId(screenId);
+    }
+
+    // Display Schedules & Playlists
+    match /schedules/{scheduleId} {
+      allow read: if isValidId(scheduleId);
+      allow write: if isValidId(scheduleId);
+    }
+
+    // Media Assets & Videos
+    match /media/{mediaId} {
+      allow read: if isValidId(mediaId);
+      allow write: if isValidId(mediaId);
+    }
+  }
+}

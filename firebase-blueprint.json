@@ -1,0 +1,86 @@
+{
+  "entities": {
+    "ClientAccount": {
+      "title": "ClientAccount",
+      "description": "Commercial establishment or client account subscribed to screen signage",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "companyName": { "type": "string" },
+        "maxScreens": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "email": { "type": "string" }
+      },
+      "required": ["id", "name", "maxScreens"]
+    },
+    "ScreenDevice": {
+      "title": "ScreenDevice",
+      "description": "Physical screen device associated with an account",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "accountId": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "orientation": { "type": "string", "enum": ["landscape", "portrait"] },
+        "resolution": { "type": "string" },
+        "branch": { "type": "string" },
+        "status": { "type": "string", "enum": ["online", "offline"] },
+        "lastPing": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "accountId", "name", "code", "orientation"]
+    },
+    "ScheduleItem": {
+      "title": "ScheduleItem",
+      "description": "Scheduled playlist item mapped to a screen device",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "screenId": { "type": "string" },
+        "mediaId": { "type": "string" },
+        "days": { "type": "array" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "isForever": { "type": "boolean" },
+        "isActive": { "type": "boolean" },
+        "order": { "type": "number" }
+      },
+      "required": ["id", "screenId", "mediaId", "days", "startTime", "endTime"]
+    },
+    "MediaItem": {
+      "title": "MediaItem",
+      "description": "Media asset such as video or image",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "accountId": { "type": "string" },
+        "title": { "type": "string" },
+        "type": { "type": "string", "enum": ["image", "video"] },
+        "url": { "type": "string" },
+        "durationSeconds": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title", "type", "url"]
+    }
+  },
+  "firestore": {
+    "/accounts/{accountId}": {
+      "schema": "ClientAccount",
+      "description": "Stores client accounts and quota information"
+    },
+    "/screens/{screenId}": {
+      "schema": "ScreenDevice",
+      "description": "Stores digital display screens registered across branches"
+    },
+    "/schedules/{scheduleId}": {
+      "schema": "ScheduleItem",
+      "description": "Stores active broadcast schedules for display screens"
+    },
+    "/media/{mediaId}": {
+      "schema": "MediaItem",
+      "description": "Stores advertising media files and assets"
+    }
+  }
+}
