@@ -18,7 +18,7 @@ import {
 interface ClientLoginProps {
   accounts: ClientAccount[];
   onLoginSuccess: (account: ClientAccount) => void;
-  onNavigatePortal: (portal: 'gateway' | 'admin' | 'player') => void;
+  onNavigatePortal: (portal: 'gateway' | 'admin' | 'player' | 'login') => void;
   preselectedAccountId?: string;
 }
 
@@ -36,7 +36,7 @@ export const ClientLogin: React.FC<ClientLoginProps> = ({
   });
 
   const [enteredEmail, setEnteredEmail] = useState('');
-  const [password, setPassword] = useState('123456');
+  const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -96,7 +96,7 @@ export const ClientLogin: React.FC<ClientLoginProps> = ({
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col justify-between py-8 px-4 selection:bg-purple-600 selection:text-white font-sans" dir="rtl">
       {/* Top Header */}
-      <div className="max-w-6xl w-full mx-auto flex items-center justify-between">
+      <div className="max-w-6xl w-full mx-auto flex flex-wrap items-center justify-between gap-3">
         <button
           onClick={() => onNavigatePortal('gateway')}
           className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer bg-white px-3.5 py-2 rounded-xl border border-slate-200 shadow-xs"
@@ -105,14 +105,34 @@ export const ClientLogin: React.FC<ClientLoginProps> = ({
           <span>العودة إلى البوابة الرئيسية</span>
         </button>
 
-        <button
-          onClick={copyClientPortalUrl}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-purple-700 transition-colors bg-white px-3.5 py-2 rounded-xl border border-slate-200 shadow-xs cursor-pointer"
-          title="نسخ الرابط المستقل لبوابة العملاء"
-        >
-          {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-          <span>{copiedLink ? 'تم نسخ الرابط!' : 'رابط بوابة العملاء المستقل'}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onNavigatePortal('player')}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-purple-700 transition-colors bg-white px-3.5 py-2 rounded-xl border border-slate-200 shadow-xs cursor-pointer"
+            title="الدخول إلى مشغل الشاشات"
+          >
+            <Tv className="w-3.5 h-3.5 text-purple-600" />
+            <span>دخول الشاشات</span>
+          </button>
+
+          <button
+            onClick={() => onNavigatePortal('login')}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-purple-700 hover:bg-purple-50 transition-colors bg-white px-3.5 py-2 rounded-xl border border-purple-200 shadow-xs cursor-pointer"
+            title="الانتقال إلى بوابة الدخول الموحدة"
+          >
+            <LogIn className="w-3.5 h-3.5 text-purple-600" />
+            <span>الدخول الموحد</span>
+          </button>
+
+          <button
+            onClick={copyClientPortalUrl}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-purple-700 transition-colors bg-white px-3.5 py-2 rounded-xl border border-slate-200 shadow-xs cursor-pointer"
+            title="نسخ الرابط المستقل لبوابة العملاء"
+          >
+            {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline">{copiedLink ? 'تم النسخ!' : 'رابط بوابة العملاء المستقل'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Main Login Card */}
@@ -193,7 +213,6 @@ export const ClientLogin: React.FC<ClientLoginProps> = ({
                   <label className="text-xs font-bold text-slate-700">
                     رمز الدخول / كلمة المرور
                   </label>
-                  <span className="text-[11px] text-purple-700 font-mono font-bold">الافتراضي: 123456</span>
                 </div>
                 <div className="relative">
                   <input

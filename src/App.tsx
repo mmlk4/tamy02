@@ -7,6 +7,7 @@ import { AdminAccountsManager } from './components/AdminAccountsManager';
 import { ScreenPlayer } from './components/ScreenPlayer';
 import { AdminLogin } from './components/AdminLogin';
 import { ClientLogin } from './components/ClientLogin';
+import { UnifiedLogin } from './components/UnifiedLogin';
 import { ScreenPlayerLauncher } from './components/ScreenPlayerLauncher';
 import { PortalGateway } from './components/PortalGateway';
 import { TamyLogo } from './components/TamyLogo';
@@ -21,7 +22,7 @@ import {
   Layers
 } from 'lucide-react';
 
-export type PortalType = 'gateway' | 'admin' | 'client' | 'player';
+export type PortalType = 'gateway' | 'admin' | 'client' | 'player' | 'login';
 
 export default function App() {
   const [accounts, setAccounts] = useState<ClientAccount[]>(() => StorageService.getAccounts());
@@ -75,6 +76,7 @@ export default function App() {
     if (portalParam === 'admin' || hash === 'admin') return 'admin';
     if (portalParam === 'client' || hash === 'client') return 'client';
     if (portalParam === 'player' || hash === 'player') return 'player';
+    if (portalParam === 'login' || hash === 'login') return 'login';
     return 'gateway';
   });
 
@@ -106,6 +108,9 @@ export default function App() {
         }
       } else if (portalParam === 'player' || hash === 'player') {
         setPortal('player');
+      } else if (portalParam === 'login' || hash === 'login') {
+        setPortal('login');
+        setPlayerScreenCode(null);
       } else {
         setPortal('gateway');
         setPlayerScreenCode(null);
@@ -198,6 +203,7 @@ export default function App() {
   const handleAdminLogout = () => {
     StorageService.setAdminSession(null);
     setAdminSession(null);
+    navigateToPortal('gateway');
   };
 
   // Client Auth Handlers
@@ -216,9 +222,7 @@ export default function App() {
     StorageService.setClientSession(null);
     setClientSession(null);
     setActiveAccount(null);
-    const url = new URL(window.location.href);
-    url.searchParams.delete('account');
-    window.history.pushState({}, '', url.toString());
+    navigateToPortal('gateway');
   };
 
   // Player Launch Handlers
@@ -303,6 +307,7 @@ export default function App() {
           activePortal="admin"
           onLogout={handleAdminLogout}
           adminData={adminSession}
+          onOpenScreens={() => navigateToPortal('player')}
         />
 
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -344,6 +349,7 @@ export default function App() {
           activePortal="client"
           onLogout={handleClientLogout}
           activeAccount={activeAccount}
+          onOpenScreens={() => navigateToPortal('player')}
         />
 
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -369,7 +375,25 @@ export default function App() {
     );
   }
 
-  // 5. Default: Portal Gateway (Central Landing Page)
+  // 5. Unified Login Portal
+  if (portal === 'login') {
+    return (
+      <UnifiedLogin
+        accounts={accounts}
+        onAdminLoginSuccess={(session) => {
+          handleAdminLoginSuccess(session);
+          navigateToPortal('admin');
+        }}
+        onClientLoginSuccess={(account) => {
+          handleClientLoginSuccess(account);
+          navigateToPortal('client', { account: account.id });
+        }}
+        onNavigatePortal={navigateToPortal}
+      />
+    );
+  }
+
+  // 6. Default: Portal Gateway (Central Landing Page)
   return (
     <PortalGateway
       onSelectPortal={(selected) => navigateToPortal(selected)}

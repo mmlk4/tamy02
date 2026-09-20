@@ -17,7 +17,10 @@ import {
   Plus,
   Sliders,
   ChevronDown,
-  Copy
+  Copy,
+  X,
+  Film,
+  Sparkles
 } from 'lucide-react';
 
 interface ClientDashboardProps {
@@ -107,6 +110,19 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
   const [previewMedia, setPreviewMedia] = useState<MediaItem | null>(null);
   const [copiedScreenLink, setCopiedScreenLink] = useState(false);
 
+  // USER DIRECTIVE:
+  // "اضف خاصية لتحديد عدد ثواني العرض للصورة الواحدة والمقطع على عدد ثواني المقطع ذاتها"
+  const [imageDurationSeconds, setImageDurationSeconds] = useState<number>(10);
+  const [detectedVideoDuration, setDetectedVideoDuration] = useState<number | null>(null);
+  const [editingScheduleMedia, setEditingScheduleMedia] = useState<{
+    scheduleId: string;
+    mediaTitle: string;
+    mediaId: string;
+    durationSeconds: number;
+    type: 'image' | 'video';
+  } | null>(null);
+  const [editModalSeconds, setEditModalSeconds] = useState<number>(10);
+
   const copyCurrentScreenLink = () => {
     if (!currentScreen) return;
     const url = new URL(window.location.href);
@@ -135,7 +151,7 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
     setSelectedDays(ALL_DAYS.map(d => d.id));
   };
 
-  // Handle Local File Upload
+  // Handle Local File Upload with Automatic Clip Duration Detection
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -144,6 +160,25 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
     setCustomFileType(isVideo ? 'video' : 'image');
     setMediaTitle(file.name.replace(/\.[^/.]+$/, ''));
 
+    if (isVideo) {
+      try {
+        const tempVideo = document.createElement('video');
+        tempVideo.preload = 'metadata';
+        tempVideo.onloadedmetadata = () => {
+          window.URL.revokeObjectURL(tempVideo.src);
+          const dur = Math.round(tempVideo.duration);
+          if (dur && !isNaN(dur) && dur > 0) {
+            setDetectedVideoDuration(dur);
+          }
+        };
+        tempVideo.src = URL.createObjectURL(file);
+      } catch (err) {
+        console.warn('Could not read video metadata:', err);
+      }
+    } else {
+      setDetectedVideoDuration(null);
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
       setCustomFileUrl(reader.result as string);
@@ -151,12 +186,24 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
     reader.readAsDataURL(file);
   };
 
+  // Determine active media type being scheduled (image vs video)
+  const activeScheduledType: 'image' | 'video' = customFileUrl
+    ? customFileType
+    : directUrl.trim()
+    ? directUrlType
+    : (allMedia.find(m => m.id === selectedMediaId)?.type || 'image');
+
   // Save Schedule & Instant Push to Screen
   const handleScheduleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentScreen) return;
 
     setIsUploading(true);
+
+    const isVideo = activeScheduledType === 'video';
+    const durationToSet = isVideo
+      ? (detectedVideoDuration || (allMedia.find(m => m.id === selectedMediaId)?.durationSeconds) || 15)
+      : Math.max(2, Number(imageDurationSeconds) || 10);
 
     let mediaToUse: MediaItem | undefined;
 
@@ -167,19 +214,32 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
       const newMedia: MediaItem = {
         id: `med_${Date.now()}`,
         accountId: activeAccount.id,
-        title: mediaTitle || (customFileUrl ? 'ملف وسائط مرفوع' : 'رابط وسائط خارجي'),
+        title: mediaTitle || (customFileUrl ? (isVideo ? 'مقطع فيديو مرفوع' : 'صورة إعلانية مرفوعة') : 'رابط وسائط خارجي'),
         type: activeType,
         url: activeUrl,
         thumbnailUrl: activeUrl,
-        durationSeconds: 12,
-        fileSize: customFileUrl ? '1.8 MB' : 'Web Stream',
+        durationSeconds: durationToSet,
+        fileSize: customFileUrl ? (isVideo ? 'Video Clip' : 'Image File') : 'Web Stream',
         createdAt: new Date().toISOString(),
         aspectRatio: currentScreen.orientation === 'portrait' ? '9:16' : '16:9',
       };
       StorageService.saveMedia(newMedia);
       mediaToUse = newMedia;
     } else {
-      mediaToUse = allMedia.find(m => m.id === selectedMediaId);
+      const found = allMedia.find(m => m.id === selectedMediaId);
+      if (found) {
+        // If image and user customized the seconds in form, update it
+        if (found.type === 'image' && imageDurationSeconds !== found.durationSeconds) {
+          const updatedFound: MediaItem = {
+            ...found,
+            durationSeconds: Math.max(2, Number(imageDurationSeconds) || 10),
+          };
+          StorageService.saveMedia(updatedFound);
+          mediaToUse = updatedFound;
+        } else {
+          mediaToUse = found;
+        }
+      }
     }
 
     if (!mediaToUse) {
@@ -210,9 +270,33 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
     // Reset upload fields
     setCustomFileUrl(null);
     setMediaTitle('');
+    setDetectedVideoDuration(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
     setIsUploading(false);
     onRefreshData();
+  };
+
+  // Quick Save for Edited Image Duration
+  const handleSaveEditedDuration = () => {
+    if (!editingScheduleMedia || !currentScreen) return;
+    const targetSchedule = currentSchedules.find(s => s.id === editingScheduleMedia.scheduleId);
+    if (targetSchedule) {
+      const newSec = Math.max(2, Number(editModalSeconds) || 10);
+      const updatedMedia: MediaItem = {
+        ...targetSchedule.media,
+        durationSeconds: newSec,
+      };
+      const updatedSchedule: ScheduleItem = {
+        ...targetSchedule,
+        media: updatedMedia,
+      };
+      StorageService.saveMedia(updatedMedia);
+      StorageService.saveSchedule(updatedSchedule);
+      setBroadcastNotice(`تم تحديث مدة عرض صورة "${updatedMedia.title}" إلى ${newSec} ثوانٍ وبثها فوراً للشاشة`);
+      setTimeout(() => setBroadcastNotice(null), 4000);
+      setEditingScheduleMedia(null);
+      onRefreshData();
+    }
   };
 
   // Delete Schedule
@@ -394,12 +478,37 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                                 <div className="font-bold text-neutral-900 truncate">
                                   {sch.media.title}
                                 </div>
-                                <div className="text-[11px] text-neutral-400 flex items-center gap-1.5 mt-0.5">
-                                  <span className="uppercase font-semibold text-purple-600">
-                                    {sch.media.type}
-                                  </span>
-                                  <span>•</span>
-                                  <span>{sch.media.durationSeconds} ثانية</span>
+                                <div className="text-[11px] flex items-center flex-wrap gap-1.5 mt-1">
+                                  {sch.media.type === 'video' ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold text-[10px] border border-indigo-200/60">
+                                      <Film className="w-3 h-3" />
+                                      <span>مدة المقطع ذاته ({sch.media.durationSeconds} ثانية)</span>
+                                    </span>
+                                  ) : (
+                                    <div className="inline-flex items-center gap-1.5">
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 font-bold text-[10px] border border-purple-200/60">
+                                        <Clock className="w-3 h-3" />
+                                        <span>عرض الصورة: {sch.media.durationSeconds || 10} ثوانٍ</span>
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingScheduleMedia({
+                                            scheduleId: sch.id,
+                                            mediaTitle: sch.media.title,
+                                            mediaId: sch.media.id,
+                                            durationSeconds: sch.media.durationSeconds || 10,
+                                            type: 'image',
+                                          });
+                                          setEditModalSeconds(sch.media.durationSeconds || 10);
+                                        }}
+                                        className="text-[10px] font-bold text-purple-700 hover:text-purple-900 bg-purple-100 hover:bg-purple-200 px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+                                        title="تعديل عدد ثواني عرض هذه الصورة"
+                                      >
+                                        تعديل الثواني
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -606,6 +715,86 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
                 )}
               </div>
 
+              {/* USER DIRECTIVE:
+                  "اضف خاصية لتحديد عدد ثواني العرض للصورة الواحدة والمقطع على عدد ثواني المقطع ذاتها"
+                  Duration Settings: Custom Seconds for Image, Auto Natural Clip Duration for Video
+              */}
+              {activeScheduledType === 'image' ? (
+                <div className="bg-purple-50/70 border border-purple-200/90 rounded-xl p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-purple-700" />
+                      <span>تحديد عدد ثواني عرض الصورة:</span>
+                    </label>
+                    <span className="text-xs font-mono font-black text-purple-800 bg-purple-100 px-2.5 py-0.5 rounded-full border border-purple-200">
+                      {imageDurationSeconds} ثوانٍ
+                    </span>
+                  </div>
+
+                  {/* Number Input & Fast Preset Pills */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min={2}
+                        max={300}
+                        value={imageDurationSeconds}
+                        onChange={e => setImageDurationSeconds(Math.max(2, Math.min(300, parseInt(e.target.value, 10) || 10)))}
+                        className="w-20 px-2.5 py-1.5 text-xs font-black font-mono text-center rounded-lg border border-purple-300 bg-white focus:outline-none focus:ring-2 focus:ring-purple-600 shadow-2xs"
+                      />
+                      <span className="text-xs text-neutral-600 font-bold">ثانية</span>
+                    </div>
+
+                    <div className="flex items-center gap-1 mr-auto overflow-x-auto py-0.5">
+                      {[5, 8, 10, 15, 20, 30].map(sec => (
+                        <button
+                          key={sec}
+                          type="button"
+                          onClick={() => setImageDurationSeconds(sec)}
+                          className={`px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                            imageDurationSeconds === sec
+                              ? 'bg-purple-600 text-white shadow-xs scale-105'
+                              : 'bg-white hover:bg-purple-100 text-neutral-700 border border-neutral-200'
+                          }`}
+                        >
+                          {sec} ث
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-neutral-500 leading-relaxed">
+                    ستعرض هذه الصورة على الشاشة لمدة <strong>{imageDurationSeconds} ثانية</strong> ثم يتم الانتقال تلقائياً للمادة التالية في الجدول.
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-indigo-50/70 border border-indigo-200/90 rounded-xl p-3.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+                      <Film className="w-3.5 h-3.5 text-indigo-700" />
+                      <span>مدة عرض مقطع الفيديو:</span>
+                    </label>
+                    <span className="text-[11px] font-bold text-indigo-800 bg-indigo-100/90 px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-indigo-200">
+                      <Check className="w-3 h-3 text-indigo-700" />
+                      <span>كامل مدة المقطع تلقائياً</span>
+                    </span>
+                  </div>
+
+                  <div className="text-[11px] text-neutral-700 leading-relaxed bg-white/80 p-2.5 rounded-lg border border-indigo-100">
+                    يتم تشغيل الفيديو كاملاً من بدايته حتى نهايته وفق{' '}
+                    <strong className="text-indigo-900 font-black">عدد ثواني المقطع ذاتها</strong>
+                    {detectedVideoDuration ? (
+                      <span className="inline-block mx-1 font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">
+                        ({detectedVideoDuration} ثانية)
+                      </span>
+                    ) : (
+                      ' (المدة الطبيعية الكاملة للمقطع)'
+                    )}
+                    ، وفور اكتمال تشغيل الفيديو ينتقل البث مباشرة للمادة التالية في الجدولة.
+                  </div>
+                </div>
+              )}
+
               {/* Days Checkboxes (Sunday through Saturday as in Tamy PDF) */}
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -723,9 +912,9 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
               </div>
               <button
                 onClick={() => setPreviewMedia(null)}
-                className="p-1 rounded bg-neutral-800 text-neutral-400 hover:text-white"
+                className="p-1 rounded bg-neutral-800 text-neutral-400 hover:text-white cursor-pointer"
               >
-                ✕
+                <X className="w-4 h-4" />
               </button>
             </div>
             <div className="relative aspect-video bg-black flex items-center justify-center">
@@ -734,6 +923,97 @@ export const ClientDashboard: React.FC<ClientDashboardProps> = ({
               ) : (
                 <img src={previewMedia.url} alt={previewMedia.title} className="w-full h-full object-contain" />
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Image Duration Modal */}
+      {editingScheduleMedia && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
+          <div className="bg-white text-neutral-900 rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-neutral-200">
+            <div className="p-4 border-b border-neutral-100 flex items-center justify-between bg-neutral-50">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center">
+                  <Clock className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-neutral-900">تعديل مدة عرض الصورة</h4>
+                  <p className="text-[11px] text-neutral-500 truncate max-w-[240px]">
+                    {editingScheduleMedia.mediaTitle}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingScheduleMedia(null)}
+                className="p-1 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-200/60 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 mb-1.5">
+                  عدد ثواني العرض على الشاشة (ثانية):
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={2}
+                    max={300}
+                    value={editModalSeconds}
+                    onChange={e => setEditModalSeconds(Math.max(2, Math.min(300, parseInt(e.target.value, 10) || 10)))}
+                    className="w-28 px-3 py-2 text-sm font-mono font-black text-center rounded-xl border border-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-600 bg-purple-50/40 text-purple-900"
+                  />
+                  <span className="text-xs font-bold text-neutral-600">ثانية</span>
+                </div>
+              </div>
+
+              {/* Preset buttons */}
+              <div>
+                <label className="block text-[11px] font-semibold text-neutral-500 mb-1.5">
+                  أو اختر مدة سريعة:
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[5, 8, 10, 15, 20, 30, 45, 60].map(sec => (
+                    <button
+                      key={sec}
+                      type="button"
+                      onClick={() => setEditModalSeconds(sec)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                        editModalSeconds === sec
+                          ? 'bg-purple-600 text-white shadow-xs'
+                          : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700'
+                      }`}
+                    >
+                      {sec} ثانية
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-3 bg-purple-50/70 rounded-xl border border-purple-100 text-[11px] text-purple-900 leading-relaxed">
+                عند النقر على حفظ، سيتم تحديث شاشة العرض تلقائياً وبثها لحظياً عبر سحابة تامي دون الحاجة لإعادة تشغيل الشاشة.
+              </div>
+            </div>
+
+            <div className="p-4 bg-neutral-50 border-t border-neutral-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingScheduleMedia(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 hover:bg-neutral-200/70 transition-colors cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEditedDuration}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white transition-colors cursor-pointer shadow-xs flex items-center gap-1.5"
+              >
+                <Check className="w-4 h-4" />
+                <span>حفظ وتحديث فوري</span>
+              </button>
             </div>
           </div>
         </div>

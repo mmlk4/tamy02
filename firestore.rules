@@ -19,25 +19,29 @@ service cloud.firestore {
 
     // Commercial Client Accounts
     match /accounts/{accountId} {
-      allow read: if isValidId(accountId);
+      allow get: if isValidId(accountId);
+      allow list: if true;
       allow write: if isValidId(accountId);
     }
 
     // Screen Devices (TVs, displays)
     match /screens/{screenId} {
-      allow read: if isValidId(screenId);
+      allow get: if isValidId(screenId);
+      allow list: if true;
       allow write: if isValidId(screenId);
     }
 
     // Display Schedules & Playlists
     match /schedules/{scheduleId} {
-      allow read: if isValidId(scheduleId);
+      allow get: if isValidId(scheduleId);
+      allow list: if true;
       allow write: if isValidId(scheduleId);
     }
 
     // Media Assets & Videos
     match /media/{mediaId} {
-      allow read: if isValidId(mediaId);
+      allow get: if isValidId(mediaId);
+      allow list: if true;
       allow write: if isValidId(mediaId);
     }
   }

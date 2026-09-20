@@ -6,7 +6,8 @@ import {
   LogOut, 
   Copy, 
   Check, 
-  Building2
+  Building2,
+  Tv
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -14,6 +15,7 @@ interface HeaderProps {
   onLogout: () => void;
   activeAccount?: ClientAccount | null;
   adminData?: { email: string; name: string } | null;
+  onOpenScreens?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -21,6 +23,7 @@ export const Header: React.FC<HeaderProps> = ({
   onLogout,
   activeAccount,
   adminData,
+  onOpenScreens,
 }) => {
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -64,7 +67,18 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Actions & User Profile */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            {onOpenScreens && (
+              <button
+                onClick={onOpenScreens}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-700 hover:text-purple-700 bg-slate-100 hover:bg-purple-50 border border-slate-200 transition-colors cursor-pointer"
+                title="الدخول إلى مشغل الشاشات الذكية"
+              >
+                <Tv className="w-3.5 h-3.5 text-purple-600" />
+                <span className="hidden sm:inline">دخول الشاشات</span>
+              </button>
+            )}
+
             {/* Copy Current Independent URL Button */}
             <button
               onClick={copyCurrentPortalUrl}

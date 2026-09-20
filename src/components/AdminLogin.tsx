@@ -1,19 +1,19 @@
 import React, { useState } from 'react';
 import { TamyLogo } from './TamyLogo';
-import { ShieldCheck, Lock, Mail, ArrowRight, CheckCircle2, AlertCircle, Copy, Check } from 'lucide-react';
+import { ShieldCheck, Lock, Mail, ArrowRight, AlertCircle, Copy, Check, Tv, LogIn } from 'lucide-react';
 import { StorageService } from '../services/storage';
 
 interface AdminLoginProps {
   onLoginSuccess: (adminData: { email: string; name: string }) => void;
-  onNavigatePortal: (portal: 'gateway' | 'client' | 'player') => void;
+  onNavigatePortal: (portal: 'gateway' | 'client' | 'player' | 'login') => void;
 }
 
 export const AdminLogin: React.FC<AdminLoginProps> = ({
   onLoginSuccess,
   onNavigatePortal,
 }) => {
-  const [email, setEmail] = useState('admin@tamy.tech');
-  const [password, setPassword] = useState('tamy2025');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -61,7 +61,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-between py-8 px-4 text-slate-900 selection:bg-purple-600 selection:text-white font-sans" dir="rtl">
       {/* Top Header */}
-      <div className="max-w-6xl w-full mx-auto flex items-center justify-between">
+      <div className="max-w-6xl w-full mx-auto flex flex-wrap items-center justify-between gap-3">
         <button
           onClick={() => onNavigatePortal('gateway')}
           className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer bg-white px-3.5 py-2 rounded-xl border border-slate-200 shadow-xs"
@@ -70,14 +70,34 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
           <span>العودة إلى البوابة الرئيسية</span>
         </button>
 
-        <button
-          onClick={copyAdminUrl}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-purple-700 transition-colors bg-white px-3.5 py-2 rounded-xl border border-slate-200 shadow-xs cursor-pointer"
-          title="نسخ الرابط المباشر لبوابة الإدارة"
-        >
-          {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-          <span>{copiedLink ? 'تم نسخ الرابط!' : 'رابط الأدمن المستقل'}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onNavigatePortal('player')}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-purple-700 transition-colors bg-white px-3.5 py-2 rounded-xl border border-slate-200 shadow-xs cursor-pointer"
+            title="الدخول إلى مشغل الشاشات"
+          >
+            <Tv className="w-3.5 h-3.5 text-purple-600" />
+            <span>دخول الشاشات</span>
+          </button>
+
+          <button
+            onClick={() => onNavigatePortal('login')}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-purple-700 hover:bg-purple-50 transition-colors bg-white px-3.5 py-2 rounded-xl border border-purple-200 shadow-xs cursor-pointer"
+            title="الانتقال إلى بوابة الدخول الموحدة"
+          >
+            <LogIn className="w-3.5 h-3.5 text-purple-600" />
+            <span>الدخول الموحد</span>
+          </button>
+
+          <button
+            onClick={copyAdminUrl}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-purple-700 transition-colors bg-white px-3.5 py-2 rounded-xl border border-slate-200 shadow-xs cursor-pointer"
+            title="نسخ الرابط المباشر لبوابة الإدارة"
+          >
+            {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline">{copiedLink ? 'تم النسخ!' : 'رابط الأدمن المستقل'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Main Login Card */}
@@ -129,7 +149,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
                 <label className="text-xs font-bold text-slate-700">
                   كلمة المرور
                 </label>
-                <span className="text-[11px] text-purple-700 font-mono font-bold">admin mode</span>
               </div>
               <div className="relative">
                 <input
@@ -171,21 +190,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
               )}
             </button>
           </form>
-
-          {/* Quick Credential Hint */}
-          <div className="mt-6 pt-5 border-t border-slate-100 text-center">
-            <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200 text-[11px] text-slate-600">
-              <div className="font-bold text-slate-800 mb-1 flex items-center justify-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5 text-purple-600" />
-                <span>بيانات الدخول السريعة للمسؤول:</span>
-              </div>
-              <div className="flex items-center justify-center gap-3 font-mono text-slate-700 mt-1">
-                <span>المستخدم: <strong className="text-purple-700">admin@tamy.tech</strong></span>
-                <span>•</span>
-                <span>الرمز: <strong className="text-purple-700">tamy2025</strong></span>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 

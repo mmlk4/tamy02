@@ -18,7 +18,12 @@ import {
   ArrowRight,
   Radio,
   Copy,
-  Check
+  Check,
+  Key,
+  Lock,
+  Eye,
+  EyeOff,
+  RefreshCw
 } from 'lucide-react';
 
 interface AdminAccountsManagerProps {
@@ -62,6 +67,9 @@ export const AdminAccountsManager: React.FC<AdminAccountsManagerProps> = ({
   const [companyName, setCompanyName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('+966 ');
+  const [accountPassword, setAccountPassword] = useState('tamy1234');
+  const [showModalPassword, setShowModalPassword] = useState(false);
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
   const [maxScreens, setMaxScreens] = useState<number>(5);
   const [notes, setNotes] = useState('');
 
@@ -88,6 +96,7 @@ export const AdminAccountsManager: React.FC<AdminAccountsManagerProps> = ({
         companyName,
         email,
         phone,
+        password: accountPassword.trim() || editingAccount.password || '123456',
         maxScreens: Number(maxScreens),
         notes,
       });
@@ -99,6 +108,7 @@ export const AdminAccountsManager: React.FC<AdminAccountsManagerProps> = ({
         companyName: companyName.trim(),
         email: email.trim(),
         phone: phone.trim(),
+        password: accountPassword.trim() || 'tamy1234',
         maxScreens: Number(maxScreens) || 1,
         status: 'active',
         createdAt: new Date().toISOString(),
@@ -112,6 +122,7 @@ export const AdminAccountsManager: React.FC<AdminAccountsManagerProps> = ({
     setCompanyName('');
     setEmail('');
     setPhone('+966 ');
+    setAccountPassword('tamy1234');
     setMaxScreens(5);
     setNotes('');
     setShowAddModal(false);
@@ -171,6 +182,7 @@ export const AdminAccountsManager: React.FC<AdminAccountsManagerProps> = ({
     setCompanyName(acc.companyName);
     setEmail(acc.email);
     setPhone(acc.phone);
+    setAccountPassword(acc.password || '123456');
     setMaxScreens(acc.maxScreens);
     setNotes(acc.notes || '');
     setShowAddModal(true);
@@ -358,6 +370,31 @@ export const AdminAccountsManager: React.FC<AdminAccountsManagerProps> = ({
                         <span className="flex items-center gap-1">
                           <Phone className="w-3.5 h-3.5 text-neutral-400" />
                           <span dir="ltr">{acc.phone}</span>
+                        </span>
+                        <span className="flex items-center gap-1.5 font-mono bg-purple-50/70 px-2 py-0.5 rounded-md text-[11px] text-purple-900 border border-purple-200">
+                          <Key className="w-3 h-3 text-purple-600" />
+                          <span className="font-sans font-bold">كلمة المرور:</span>
+                          <span className="font-bold">{revealedPasswords[acc.id] ? (acc.password || '123456') : '••••••'}</span>
+                          <button
+                            type="button"
+                            onClick={() => setRevealedPasswords(prev => ({ ...prev, [acc.id]: !prev[acc.id] }))}
+                            className="text-purple-400 hover:text-purple-700 cursor-pointer p-0.5"
+                            title={revealedPasswords[acc.id] ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
+                          >
+                            {revealedPasswords[acc.id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(acc.password || '123456');
+                              setCopiedLinkInfo(`pass_${acc.id}`);
+                              setTimeout(() => setCopiedLinkInfo(null), 2000);
+                            }}
+                            className="text-purple-400 hover:text-purple-700 cursor-pointer p-0.5 mr-0.5"
+                            title="نسخ كلمة المرور للعميل"
+                          >
+                            {copiedLinkInfo === `pass_${acc.id}` ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                          </button>
                         </span>
                         {acc.notes && (
                           <span className="text-neutral-400">
@@ -571,6 +608,49 @@ export const AdminAccountsManager: React.FC<AdminAccountsManagerProps> = ({
                     className="w-full px-3 py-2 text-sm rounded-lg border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-purple-600"
                   />
                 </div>
+              </div>
+
+              {/* Password Assignment by Admin */}
+              <div className="bg-purple-50/70 p-3.5 rounded-xl border border-purple-200">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-purple-900 flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-purple-700" />
+                    <span>تعيين كلمة مرور حساب العميل *</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const generated = 'tamy' + Math.floor(1000 + Math.random() * 9000);
+                      setAccountPassword(generated);
+                    }}
+                    className="text-[11px] font-bold text-purple-700 hover:text-purple-900 flex items-center gap-1 cursor-pointer bg-white px-2 py-0.5 rounded border border-purple-200 shadow-2xs"
+                  >
+                    <RefreshCw className="w-3 h-3 text-purple-600" />
+                    <span>توليد تلقائي</span>
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showModalPassword ? 'text' : 'password'}
+                    required
+                    value={accountPassword}
+                    onChange={e => setAccountPassword(e.target.value)}
+                    placeholder="مثال: tamy1234"
+                    className="w-full pr-9 pl-9 py-2 text-sm rounded-lg border border-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-600 font-mono bg-white text-neutral-900"
+                  />
+                  <Lock className="w-4 h-4 text-purple-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <button
+                    type="button"
+                    onClick={() => setShowModalPassword(!showModalPassword)}
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 cursor-pointer p-0.5"
+                    title={showModalPassword ? 'إخفاء' : 'إظهار'}
+                  >
+                    {showModalPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-purple-800/80 mt-1.5">
+                  يستخدم العميل هذه الكلمة لتسجيل الدخول في بوابة الدخول الموحدة للوصول إلى لوحة تحكم شاشاته.
+                </p>
               </div>
 
               <div>

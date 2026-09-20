@@ -3,6 +3,54 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function() {
+        try {
+          var origFetch = window.fetch;
+          if (typeof origFetch === 'function') {
+            var currentFetch = origFetch;
+            // 1. Try defining an own writable property on window
+            try {
+              Object.defineProperty(window, 'fetch', {
+                value: function() { return currentFetch.apply(this, arguments); },
+                writable: true,
+                configurable: true,
+                enumerable: true
+              });
+            } catch (err1) {
+              // 2. If value property fails, define getter/setter on window
+              try {
+                Object.defineProperty(window, 'fetch', {
+                  get: function() { return currentFetch; },
+                  set: function(val) { currentFetch = val; },
+                  configurable: true,
+                  enumerable: true
+                });
+              } catch (err2) {}
+            }
+
+            // 3. Also walk the prototype chain to ensure any inherited getter has a setter
+            var proto = Object.getPrototypeOf(window);
+            while (proto) {
+              var desc = Object.getOwnPropertyDescriptor(proto, 'fetch');
+              if (desc && desc.configurable) {
+                try {
+                  Object.defineProperty(proto, 'fetch', {
+                    get: function() { return currentFetch; },
+                    set: function(val) { currentFetch = val; },
+                    configurable: true,
+                    enumerable: true
+                  });
+                } catch (err3) {}
+              }
+              proto = Object.getPrototypeOf(proto);
+            }
+          }
+        } catch (e) {
+          // silent fallback
+        }
+      })();
+    </script>
     <title>Tamy - نظام إدارة شاشات الإعلانات الذكية</title>
     <meta name="description" content="نظام تامي لإدارة وبث المحتوى على شاشات العرض الإعلانية للمطاعم والمكاتب لحظياً" />
     <meta property="og:title" content="Tamy - نظام إدارة شاشات الإعلانات الذكية" />

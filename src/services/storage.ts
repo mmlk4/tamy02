@@ -83,6 +83,167 @@ const STORAGE_KEYS = {
   CLOUD_STATUS: 'tamy_cloud_status_v3',
 };
 
+// ---------------------------------------------------------------------------
+// 1. IndexedDB Helper for High-Capacity Offline Storage (Images, Videos, Large Lists)
+// ---------------------------------------------------------------------------
+const IDB_NAME = 'tamy_offline_store_v3';
+const IDB_STORE = 'tamy_data';
+
+function openIDB(): Promise<IDBDatabase | null> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || !window.indexedDB) {
+      return resolve(null);
+    }
+    try {
+      const request = indexedDB.open(IDB_NAME, 1);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) {
+          db.createObjectStore(IDB_STORE);
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function idbSave(key: string, val: any): Promise<void> {
+  try {
+    const db = await openIDB();
+    if (!db) return;
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(val, key);
+  } catch (e) {
+    // IDB save failure ignored silently
+  }
+}
+
+async function idbLoad<T>(key: string): Promise<T | null> {
+  try {
+    const db = await openIDB();
+    if (!db) return null;
+    return new Promise((resolve) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).get(key);
+      req.onsuccess = () => resolve((req.result as T) ?? null);
+      req.onerror = () => resolve(null);
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function idbClear(): Promise<void> {
+  try {
+    const db = await openIDB();
+    if (!db) return;
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).clear();
+  } catch {}
+}
+
+// ---------------------------------------------------------------------------
+// 2. In-Memory Cache (Guarantees Instant Sync Return without Quota Exceptions)
+// ---------------------------------------------------------------------------
+const memoryCache: {
+  accounts: ClientAccount[] | null;
+  screens: ScreenDevice[] | null;
+  media: MediaItem[] | null;
+  schedules: ScheduleItem[] | null;
+} = {
+  accounts: null,
+  screens: null,
+  media: null,
+  schedules: null,
+};
+
+// Initial synchronous load from localStorage with full try/catch protection
+if (typeof window !== 'undefined') {
+  try {
+    const acc = localStorage.getItem(STORAGE_KEYS.ACCOUNTS);
+    if (acc) memoryCache.accounts = JSON.parse(acc);
+  } catch {}
+
+  try {
+    const scr = localStorage.getItem(STORAGE_KEYS.SCREENS);
+    if (scr) memoryCache.screens = JSON.parse(scr);
+  } catch {}
+
+  try {
+    const med = localStorage.getItem(STORAGE_KEYS.MEDIA);
+    if (med) memoryCache.media = JSON.parse(med);
+  } catch {}
+
+  try {
+    const sch = localStorage.getItem(STORAGE_KEYS.SCHEDULES);
+    if (sch) memoryCache.schedules = JSON.parse(sch);
+  } catch {}
+
+  // Asynchronously rehydrate from IndexedDB in case localStorage was previously full
+  idbLoad<MediaItem[]>(STORAGE_KEYS.MEDIA).then((stored) => {
+    if (stored && Array.isArray(stored) && stored.length > 0) {
+      if (!memoryCache.media || stored.length >= memoryCache.media.length) {
+        memoryCache.media = stored;
+      }
+    }
+  });
+
+  idbLoad<ScheduleItem[]>(STORAGE_KEYS.SCHEDULES).then((stored) => {
+    if (stored && Array.isArray(stored) && stored.length > 0) {
+      if (!memoryCache.schedules || stored.length >= memoryCache.schedules.length) {
+        memoryCache.schedules = stored;
+      }
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 3. Safe LocalStorage Writer (Catches QuotaExceededError & Prevents Crashing)
+// ---------------------------------------------------------------------------
+function safeSetItem(key: string, value: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(key, value);
+  } catch (e: any) {
+    const isQuotaError = 
+      e?.name === 'QuotaExceededError' || 
+      e?.name === 'NS_ERROR_DOM_QUOTA_REACHED' || 
+      e?.code === 22 || 
+      e?.code === 1014 ||
+      (e?.message && typeof e.message === 'string' && e.message.toLowerCase().includes('quota'));
+
+    if (isQuotaError) {
+      console.warn(`[StorageService] localStorage quota reached for '${key}'. Safely falling back to Memory + IndexedDB.`);
+      // If media key overflows, try keeping only lightweight items in localStorage
+      if (key === STORAGE_KEYS.MEDIA) {
+        try {
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) {
+            const lightweight = parsed.map((m: MediaItem) => ({
+              ...m,
+              url: m.url?.startsWith('data:') ? '[idb_stored_asset]' : m.url,
+            }));
+            localStorage.setItem(key, JSON.stringify(lightweight));
+          }
+        } catch {
+          // If still overflowing, remove from localStorage to free space
+          try {
+            localStorage.removeItem(key);
+          } catch {}
+        }
+      } else if (key === STORAGE_KEYS.SCHEDULES) {
+        // Remove overflowing key from localStorage; memory and IDB preserve data safely
+        try {
+          localStorage.removeItem(key);
+        } catch {}
+      }
+    }
+  }
+}
+
 // Cross-tab broadcast channel for instantaneous zero-latency local dispatch
 let broadcastChannel: BroadcastChannel | null = null;
 try {
@@ -112,7 +273,9 @@ export const StorageService = {
         });
 
         if (cloudAccounts.length > 0) {
-          localStorage.setItem(STORAGE_KEYS.ACCOUNTS, JSON.stringify(cloudAccounts));
+          memoryCache.accounts = cloudAccounts;
+          safeSetItem(STORAGE_KEYS.ACCOUNTS, JSON.stringify(cloudAccounts));
+          idbSave(STORAGE_KEYS.ACCOUNTS, cloudAccounts);
           this.broadcast({
             type: 'SCREEN_REFRESH',
             timestamp: Date.now(),
@@ -131,7 +294,9 @@ export const StorageService = {
         });
 
         if (cloudScreens.length > 0) {
-          localStorage.setItem(STORAGE_KEYS.SCREENS, JSON.stringify(cloudScreens));
+          memoryCache.screens = cloudScreens;
+          safeSetItem(STORAGE_KEYS.SCREENS, JSON.stringify(cloudScreens));
+          idbSave(STORAGE_KEYS.SCREENS, cloudScreens);
           this.broadcast({
             type: 'SCREEN_REFRESH',
             timestamp: Date.now(),
@@ -150,7 +315,9 @@ export const StorageService = {
         });
 
         if (cloudMedia.length > 0) {
-          localStorage.setItem(STORAGE_KEYS.MEDIA, JSON.stringify(cloudMedia));
+          memoryCache.media = cloudMedia;
+          safeSetItem(STORAGE_KEYS.MEDIA, JSON.stringify(cloudMedia));
+          idbSave(STORAGE_KEYS.MEDIA, cloudMedia);
           this.broadcast({
             type: 'SCREEN_REFRESH',
             timestamp: Date.now(),
@@ -169,7 +336,9 @@ export const StorageService = {
         });
 
         if (cloudSchedules.length > 0) {
-          localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(cloudSchedules));
+          memoryCache.schedules = cloudSchedules;
+          safeSetItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(cloudSchedules));
+          idbSave(STORAGE_KEYS.SCHEDULES, cloudSchedules);
           this.broadcast({
             type: 'SCHEDULE_UPDATED',
             timestamp: Date.now(),
@@ -186,8 +355,18 @@ export const StorageService = {
 
   // --- ACCOUNTS ---
   getAccounts(): ClientAccount[] {
-    const data = localStorage.getItem(STORAGE_KEYS.ACCOUNTS);
-    return data ? JSON.parse(data) : [];
+    if (memoryCache.accounts && Array.isArray(memoryCache.accounts)) {
+      return memoryCache.accounts;
+    }
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.ACCOUNTS);
+      if (data) {
+        const list = JSON.parse(data);
+        memoryCache.accounts = list;
+        return list;
+      }
+    } catch {}
+    return [];
   },
 
   getAccountById(id: string): ClientAccount | undefined {
@@ -195,14 +374,18 @@ export const StorageService = {
   },
 
   saveAccount(account: ClientAccount): ClientAccount {
-    const accounts = this.getAccounts();
+    const accounts = [...this.getAccounts()];
     const index = accounts.findIndex(a => a.id === account.id);
     if (index >= 0) {
       accounts[index] = account;
     } else {
       accounts.push(account);
     }
-    localStorage.setItem(STORAGE_KEYS.ACCOUNTS, JSON.stringify(accounts));
+
+    memoryCache.accounts = accounts;
+    safeSetItem(STORAGE_KEYS.ACCOUNTS, JSON.stringify(accounts));
+    idbSave(STORAGE_KEYS.ACCOUNTS, accounts);
+
     this.broadcast({
       type: 'SCREEN_REFRESH',
       accountId: account.id,
@@ -220,10 +403,14 @@ export const StorageService = {
 
   deleteAccount(id: string): boolean {
     const accounts = this.getAccounts().filter(a => a.id !== id);
-    localStorage.setItem(STORAGE_KEYS.ACCOUNTS, JSON.stringify(accounts));
+    memoryCache.accounts = accounts;
+    safeSetItem(STORAGE_KEYS.ACCOUNTS, JSON.stringify(accounts));
+    idbSave(STORAGE_KEYS.ACCOUNTS, accounts);
 
     const screens = this.getScreens().filter(s => s.accountId !== id);
-    localStorage.setItem(STORAGE_KEYS.SCREENS, JSON.stringify(screens));
+    memoryCache.screens = screens;
+    safeSetItem(STORAGE_KEYS.SCREENS, JSON.stringify(screens));
+    idbSave(STORAGE_KEYS.SCREENS, screens);
 
     // Cloud Firestore Delete
     deleteDoc(doc(db, 'accounts', id)).catch((err) => {
@@ -235,8 +422,19 @@ export const StorageService = {
 
   // --- SCREENS ---
   getScreens(accountId?: string): ScreenDevice[] {
-    const data = localStorage.getItem(STORAGE_KEYS.SCREENS);
-    const list: ScreenDevice[] = data ? JSON.parse(data) : [];
+    let list: ScreenDevice[] = [];
+    if (memoryCache.screens && Array.isArray(memoryCache.screens)) {
+      list = memoryCache.screens;
+    } else {
+      try {
+        const data = localStorage.getItem(STORAGE_KEYS.SCREENS);
+        if (data) {
+          list = JSON.parse(data);
+          memoryCache.screens = list;
+        }
+      } catch {}
+    }
+
     if (accountId) {
       return list.filter(s => s.accountId === accountId);
     }
@@ -250,7 +448,7 @@ export const StorageService = {
 
   saveScreen(screen: ScreenDevice): { success: boolean; error?: string; screen?: ScreenDevice } {
     const account = this.getAccountById(screen.accountId);
-    const screens = this.getScreens();
+    const screens = [...this.getScreens()];
     const existingIndex = screens.findIndex(s => s.id === screen.id);
 
     // Enforce quota limit
@@ -270,7 +468,10 @@ export const StorageService = {
       screens.push(screen);
     }
 
-    localStorage.setItem(STORAGE_KEYS.SCREENS, JSON.stringify(screens));
+    memoryCache.screens = screens;
+    safeSetItem(STORAGE_KEYS.SCREENS, JSON.stringify(screens));
+    idbSave(STORAGE_KEYS.SCREENS, screens);
+
     this.broadcast({
       type: 'SCREEN_REFRESH',
       screenId: screen.id,
@@ -289,10 +490,14 @@ export const StorageService = {
 
   deleteScreen(screenId: string): boolean {
     const screens = this.getScreens().filter(s => s.id !== screenId);
-    localStorage.setItem(STORAGE_KEYS.SCREENS, JSON.stringify(screens));
+    memoryCache.screens = screens;
+    safeSetItem(STORAGE_KEYS.SCREENS, JSON.stringify(screens));
+    idbSave(STORAGE_KEYS.SCREENS, screens);
 
     const schedules = this.getSchedules().filter(sch => sch.screenId !== screenId);
-    localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(schedules));
+    memoryCache.schedules = schedules;
+    safeSetItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(schedules));
+    idbSave(STORAGE_KEYS.SCHEDULES, schedules);
 
     this.broadcast({
       type: 'SCREEN_REFRESH',
@@ -309,12 +514,15 @@ export const StorageService = {
   },
 
   pingScreen(screenId: string): void {
-    const screens = this.getScreens();
+    const screens = [...this.getScreens()];
     const screen = screens.find(s => s.id === screenId || s.code.toLowerCase() === screenId.toLowerCase());
     if (screen) {
       screen.lastPing = new Date().toISOString();
       screen.status = 'online';
-      localStorage.setItem(STORAGE_KEYS.SCREENS, JSON.stringify(screens));
+
+      memoryCache.screens = screens;
+      safeSetItem(STORAGE_KEYS.SCREENS, JSON.stringify(screens));
+
       this.broadcast({
         type: 'HEARTBEAT',
         screenId: screen.id,
@@ -327,15 +535,26 @@ export const StorageService = {
         lastPing: screen.lastPing,
         status: 'online',
       }).catch(() => {
-        // If doc does not exist yet, ignore or create
+        // If doc does not exist yet, ignore
       });
     }
   },
 
   // --- MEDIA ---
   getMedia(accountId?: string): MediaItem[] {
-    const data = localStorage.getItem(STORAGE_KEYS.MEDIA);
-    const list: MediaItem[] = data ? JSON.parse(data) : [];
+    let list: MediaItem[] = [];
+    if (memoryCache.media && Array.isArray(memoryCache.media)) {
+      list = memoryCache.media;
+    } else {
+      try {
+        const data = localStorage.getItem(STORAGE_KEYS.MEDIA);
+        if (data) {
+          list = JSON.parse(data);
+          memoryCache.media = list;
+        }
+      } catch {}
+    }
+
     if (accountId) {
       return list.filter(m => m.accountId === accountId);
     }
@@ -343,14 +562,17 @@ export const StorageService = {
   },
 
   saveMedia(media: MediaItem): MediaItem {
-    const items = this.getMedia();
+    const items = [...this.getMedia()];
     const index = items.findIndex(m => m.id === media.id);
     if (index >= 0) {
       items[index] = media;
     } else {
       items.unshift(media);
     }
-    localStorage.setItem(STORAGE_KEYS.MEDIA, JSON.stringify(items));
+
+    memoryCache.media = items;
+    safeSetItem(STORAGE_KEYS.MEDIA, JSON.stringify(items));
+    idbSave(STORAGE_KEYS.MEDIA, items);
 
     // Cloud Firestore Save
     const docRef = doc(db, 'media', media.id);
@@ -363,10 +585,14 @@ export const StorageService = {
 
   deleteMedia(mediaId: string): boolean {
     const items = this.getMedia().filter(m => m.id !== mediaId);
-    localStorage.setItem(STORAGE_KEYS.MEDIA, JSON.stringify(items));
+    memoryCache.media = items;
+    safeSetItem(STORAGE_KEYS.MEDIA, JSON.stringify(items));
+    idbSave(STORAGE_KEYS.MEDIA, items);
 
     const schedules = this.getSchedules().filter(s => s.mediaId !== mediaId);
-    localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(schedules));
+    memoryCache.schedules = schedules;
+    safeSetItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(schedules));
+    idbSave(STORAGE_KEYS.SCHEDULES, schedules);
 
     // Cloud Firestore Delete
     deleteDoc(doc(db, 'media', mediaId)).catch((err) => {
@@ -378,8 +604,19 @@ export const StorageService = {
 
   // --- SCHEDULES ---
   getSchedules(screenId?: string): ScheduleItem[] {
-    const data = localStorage.getItem(STORAGE_KEYS.SCHEDULES);
-    const list: ScheduleItem[] = data ? JSON.parse(data) : [];
+    let list: ScheduleItem[] = [];
+    if (memoryCache.schedules && Array.isArray(memoryCache.schedules)) {
+      list = memoryCache.schedules;
+    } else {
+      try {
+        const data = localStorage.getItem(STORAGE_KEYS.SCHEDULES);
+        if (data) {
+          list = JSON.parse(data);
+          memoryCache.schedules = list;
+        }
+      } catch {}
+    }
+
     if (screenId) {
       return list.filter(s => s.screenId === screenId);
     }
@@ -387,14 +624,17 @@ export const StorageService = {
   },
 
   saveSchedule(schedule: ScheduleItem): ScheduleItem {
-    const items = this.getSchedules();
+    const items = [...this.getSchedules()];
     const index = items.findIndex(s => s.id === schedule.id);
     if (index >= 0) {
       items[index] = schedule;
     } else {
       items.push(schedule);
     }
-    localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(items));
+
+    memoryCache.schedules = items;
+    safeSetItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(items));
+    idbSave(STORAGE_KEYS.SCHEDULES, items);
     
     // Broadcast instant local signal
     this.broadcast({
@@ -414,10 +654,13 @@ export const StorageService = {
   },
 
   deleteSchedule(scheduleId: string): boolean {
-    const schedules = this.getSchedules();
+    const schedules = [...this.getSchedules()];
     const target = schedules.find(s => s.id === scheduleId);
     const updated = schedules.filter(s => s.id !== scheduleId);
-    localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(updated));
+
+    memoryCache.schedules = updated;
+    safeSetItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(updated));
+    idbSave(STORAGE_KEYS.SCHEDULES, updated);
 
     if (target) {
       this.broadcast({
@@ -501,10 +744,18 @@ export const StorageService = {
   // --- PURGE ALL DATA ---
   clearAllData(): void {
     try {
+      memoryCache.accounts = [];
+      memoryCache.screens = [];
+      memoryCache.media = [];
+      memoryCache.schedules = [];
+
       localStorage.removeItem(STORAGE_KEYS.ACCOUNTS);
       localStorage.removeItem(STORAGE_KEYS.SCREENS);
       localStorage.removeItem(STORAGE_KEYS.MEDIA);
       localStorage.removeItem(STORAGE_KEYS.SCHEDULES);
+
+      idbClear();
+
       this.broadcast({
         type: 'SCREEN_REFRESH',
         timestamp: Date.now(),

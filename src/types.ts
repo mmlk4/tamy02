@@ -6,6 +6,7 @@ export interface ClientAccount {
   companyName: string;
   email: string;
   phone: string;
+  password?: string;
   maxScreens: number;
   status: 'active' | 'suspended';
   createdAt: string;

@@ -53,6 +53,7 @@ export const ScreenPlayer: React.FC<ScreenPlayerProps> = ({
   });
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   // Refresh clock every minute for schedule filtering
   useEffect(() => {
@@ -133,12 +134,33 @@ export const ScreenPlayer: React.FC<ScreenPlayerProps> = ({
     const currentItem = activeList[safeIndex];
     setActiveMedia(currentItem.media);
 
-    const duration = (currentItem.media?.durationSeconds || 10) * 1000;
-    const cycleTimer = setTimeout(() => {
-      setCurrentIndex(prev => (prev + 1) % Math.max(1, activeList.length));
-    }, duration);
+    // If only 1 media item is scheduled, no cyclic timeout is needed
+    if (activeList.length <= 1) {
+      return;
+    }
 
-    return () => clearTimeout(cycleTimer);
+    // USER DIRECTIVE:
+    // "اضف خاصية لتحديد عدد ثواني العرض للصورة الواحدة والمقطع على عدد ثواني المقطع ذاتها"
+    // For images: cycle after the exact specified number of seconds
+    // For videos: cycle when the video finishes (onEnded event on <video>).
+    if (currentItem.media?.type !== 'video') {
+      const duration = Math.max(2, currentItem.media?.durationSeconds || 10) * 1000;
+      const cycleTimer = setTimeout(() => {
+        setCurrentIndex(prev => (prev + 1) % activeList.length);
+      }, duration);
+
+      return () => clearTimeout(cycleTimer);
+    } else {
+      // For video clips, display duration is the video clip's own length!
+      // The onEnded callback on the <video> element will advance to next item.
+      // Safety fallback timer if video stalls or fails to trigger onEnded:
+      const videoDuration = Math.max(5, currentItem.media?.durationSeconds || 30);
+      const fallbackTimer = setTimeout(() => {
+        setCurrentIndex(prev => (prev + 1) % activeList.length);
+      }, (videoDuration + 3) * 1000);
+
+      return () => clearTimeout(fallbackTimer);
+    }
   }, [schedules, currentIndex, currentTime.getMinutes()]);
 
   // Keyboard navigation & TV remote control in Player:
@@ -158,7 +180,9 @@ export const ScreenPlayer: React.FC<ScreenPlayerProps> = ({
         // Cycle rotation 0 -> 90 -> 180 -> 270 -> 0
         setRotation(prev => {
           const next = (prev + 90) % 360;
-          localStorage.setItem(`tamy_screen_rot_${screenCode}`, next.toString());
+          try {
+            localStorage.setItem(`tamy_screen_rot_${screenCode}`, next.toString());
+          } catch {}
           return next;
         });
       } else if (e.key === 'f' || e.key === 'F') {
@@ -278,12 +302,27 @@ export const ScreenPlayer: React.FC<ScreenPlayerProps> = ({
         <div style={mediaStyle} className="overflow-hidden flex items-center justify-center bg-black">
           {activeMedia.type === 'video' ? (
             <video
+              ref={videoRef}
               key={activeMedia.id}
               src={activeMedia.url}
               autoPlay
-              loop
+              loop={getActiveSchedules().length <= 1}
               muted={isMuted}
               playsInline
+              onEnded={() => {
+                const activeList = getActiveSchedules();
+                // Play for the clip's full duration, then advance to next media item
+                if (activeList.length > 1) {
+                  setCurrentIndex(prev => (prev + 1) % activeList.length);
+                }
+              }}
+              onLoadedMetadata={(e) => {
+                const v = e.currentTarget;
+                v.play().catch(() => {
+                  v.muted = true;
+                  v.play().catch(() => {});
+                });
+              }}
               className="w-full h-full object-cover"
             />
           ) : (
